@@ -17,56 +17,75 @@ if (isset($_SESSION['user_id'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Report System - Maria Ow'embabazi P/S</title>
+    <title>Login - Arturomania Systems</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <link rel="icon" type="image/png" href="images/logo.png">
+    <!-- Assuming aslogo.png will be in the root or an 'images' folder -->
+    <link rel="icon" type="image/png" href="aslogo.png">
     <style>
         body {
-            background-color: #e0f7fa; /* Light blue background */
+            /* Using a gradient similar to welcome.php for consistency */
+            background: linear-gradient(to right, #6a11cb, #2575fc);
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
         }
         .login-container {
             background-color: #fff;
-            padding: 30px 40px; /* Increased padding */
+            padding: 40px; /* Consistent padding */
             border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
             width: 100%;
-            max-width: 420px; /* Slightly wider */
+            max-width: 450px;
         }
         .login-header {
             text-align: center;
-            margin-bottom: 25px;
+            margin-bottom: 30px;
         }
         .login-header img {
-            width: 80px; /* Larger logo */
-            margin-bottom: 15px;
+            width: 70px; /* Adjusted logo size */
+            margin-bottom: 10px;
         }
         .login-header h2 {
-            color: #0056b3; /* Darker blue for heading */
+            color: #333; /* Standard dark color */
             font-weight: 600;
+            font-size: 1.8rem;
         }
         .form-floating label {
-            padding-left: 0.5rem; /* Align floating label better */
+            padding-left: 0.5rem;
         }
         .btn-primary {
-            background-color: #007bff;
-            border-color: #007bff;
-            padding: 10px; /* Larger button padding */
+            background-color: #2575fc; /* Main theme color */
+            border-color: #2575fc;
+            padding: 12px;
             font-size: 1.1rem;
+            transition: background-color 0.3s;
         }
         .btn-primary:hover {
-            background-color: #0069d9;
-            border-color: #0062cc;
+            background-color: #1a5db3; /* Darker shade for hover */
+            border-color: #1a5db3;
         }
-        .forgot-password-link {
-            display: block;
-            text-align: right;
-            margin-top: 10px;
+        .form-links {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+        .form-links a {
+            color: #2575fc;
+            text-decoration: none;
+        }
+        .form-links a:hover {
+            text-decoration: underline;
+        }
+        .footer-text {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
             font-size: 0.9em;
         }
     </style>
@@ -74,9 +93,10 @@ if (isset($_SESSION['user_id'])) {
 <body>
     <div class="login-container">
         <div class="login-header">
-            <img src="images/logo.png" alt="School Logo" onerror="this.style.display='none';">
-            <h2>School Report System</h2>
-            <p class="text-muted">Please sign in to continue</p>
+            <!-- Placeholder for logo, assuming aslogo.png is accessible -->
+            <img src="aslogo.png" alt="Arturomania Systems Logo" onerror="this.src='images/logo_placeholder.png'; this.alt='Arturomania Systems Logo';">
+            <h2>Arturomania Systems</h2>
+            <p class="text-muted">Sign in to manage your school</p>
         </div>
 
         <?php if ($error_message): ?>
@@ -100,9 +120,14 @@ if (isset($_SESSION['user_id'])) {
                 <label for="password"><i class="fas fa-lock me-2"></i>Password</label>
             </div>
             <button class="w-100 btn btn-lg btn-primary" type="submit"><i class="fas fa-sign-in-alt me-2"></i>Sign In</button>
-            <a href="forgot_password.php" class="forgot-password-link">Forgot Password?</a>
+            <div class="form-links">
+                <a href="forgot_password.php">Forgot Password?</a>
+                <a href="signup.php">Create Account</a>
+            </div>
         </form>
-        <p class="mt-4 mb-3 text-muted text-center">&copy; <?php echo date('Y'); ?> Maria Ow'embabazi P/S</p>
+        <div class="footer-text">
+            <p>&copy; <?php echo date('Y'); ?> Arturomania Systems. <a href="welcome.php" style="color: #2575fc; text-decoration:none;">Home</a></p>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

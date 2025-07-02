@@ -24,76 +24,119 @@ $current_academic_year_id = null; // Initialize
 $dashboard_progress_data = [];   // Initialize
 $classes_list = [];              // Initialize
 $terms_list = [];                // Initialize
+$school_id = $_SESSION['school_id'] ?? null; // Get school_id from session
 
-try {
-    $stmt_ay = $pdo->prepare("SELECT id FROM academic_years WHERE year_name = :year_name LIMIT 1");
-    $stmt_ay->execute([':year_name' => $current_year_name]);
-    $current_academic_year_id = $stmt_ay->fetchColumn();
+if ($school_id) { // Only proceed if school_id is set
+    try {
+        // Fetch the active academic year for the current school
+        $stmt_ay = $pdo->prepare("SELECT id FROM academic_years WHERE school_id = :school_id AND year_name = :year_name AND is_active = 1 LIMIT 1");
+        if (!$stmt_ay) {
+            throw new Exception("Failed to prepare statement for academic years.");
+        }
+        $stmt_ay->execute([':school_id' => $school_id, ':year_name' => $current_year_name]);
+        $current_academic_year_id = $stmt_ay->fetchColumn();
 
-    if ($current_academic_year_id) {
-        $stmt_classes = $pdo->query("SELECT id, class_name FROM classes ORDER BY class_name ASC"); // Consider a sort order column if 'P1, P2...' is not alphabetical
-        $classes_list = $stmt_classes->fetchAll(PDO::FETCH_ASSOC);
-
-        // Fetch terms, ensuring a specific order (e.g., Term I, II, III)
-        // This might require an 'order_index' column in 'terms' table or specific IDs.
-        // For now, assume ordering by ID or term_name gives a logical sequence.
-        $stmt_terms = $pdo->query("SELECT id, term_name FROM terms ORDER BY id ASC");
-        $terms_list = $stmt_terms->fetchAll(PDO::FETCH_ASSOC);
-
-        $stmt_batch_check = $pdo->prepare(
-            "SELECT id FROM report_batch_settings
-             WHERE academic_year_id = :academic_year_id
-               AND class_id = :class_id
-               AND term_id = :term_id
-             LIMIT 1"
-        );
-        $stmt_summary_check = $pdo->prepare(
-            "SELECT COUNT(id) FROM student_report_summary WHERE report_batch_id = :report_batch_id LIMIT 1"
-        );
-
-        foreach ($classes_list as $class_item) {
-            $class_id = $class_item['id'];
-            $class_name = $class_item['class_name'];
-            $dashboard_progress_data[$class_name] = [];
-
-            foreach ($terms_list as $term_item) {
-                $term_id = $term_item['id'];
-                $term_name_key = $term_item['term_name']; // Use term_name as key for consistency
-
-                $stmt_batch_check->execute([
-                    ':academic_year_id' => $current_academic_year_id,
-                    ':class_id' => $class_id,
-                    ':term_id' => $term_id
-                ]);
-                $report_batch_id = $stmt_batch_check->fetchColumn();
-                $status = "Pending"; // Default
-
-                if ($report_batch_id) {
-                    $stmt_summary_check->execute([':report_batch_id' => $report_batch_id]);
-                    $summary_count = $stmt_summary_check->fetchColumn();
-                    if ($summary_count !== false && $summary_count > 0) { // Check count is not false from fetchColumn
-                        $status = "Completed";
-                    } else {
-                        $status = "Data Imported";
-                    }
-                }
-                $dashboard_progress_data[$class_name][$term_name_key] = [
-                    'status' => $status,
-                    'report_batch_id' => $report_batch_id
-                ];
+        if (!$current_academic_year_id) {
+            // If current year is not active or not found, try to get any active year for the school
+            $stmt_ay_active = $pdo->prepare("SELECT id FROM academic_years WHERE school_id = :school_id AND is_active = 1 ORDER BY year_name DESC LIMIT 1");
+            if (!$stmt_ay_active) {
+                throw new Exception("Failed to prepare statement for active academic year.");
+            }
+            $stmt_ay_active->execute([':school_id' => $school_id]);
+            $current_academic_year_id = $stmt_ay_active->fetchColumn();
+            if ($current_academic_year_id) {
+                 // Fetch the name of this active year to display
+                $stmt_ay_name = $pdo->prepare("SELECT year_name FROM academic_years WHERE id = :id");
+                $stmt_ay_name->execute([':id' => $current_academic_year_id]);
+                $current_year_name = $stmt_ay_name->fetchColumn();
             }
         }
-    } else {
-        if (isset($_SESSION['user_id'])) { // Only set session message if a user is logged in
-          $_SESSION['info_message'] = "Dashboard Progress: The current Academic Year (" . htmlspecialchars($current_year_name) . ") is not found in the system. Progress display may be incomplete.";
+
+
+        if ($current_academic_year_id) {
+            $stmt_classes = $pdo->prepare("SELECT id, class_name FROM classes WHERE school_id = :school_id ORDER BY class_name ASC");
+            if (!$stmt_classes) {
+                throw new Exception("Failed to prepare statement for classes.");
+            }
+            $stmt_classes->execute([':school_id' => $school_id]);
+            $classes_list = $stmt_classes->fetchAll(PDO::FETCH_ASSOC);
+
+            $stmt_terms = $pdo->prepare("SELECT id, term_name FROM terms WHERE school_id = :school_id ORDER BY order_index ASC, id ASC");
+            if (!$stmt_terms) {
+                throw new Exception("Failed to prepare statement for terms.");
+            }
+            $stmt_terms->execute([':school_id' => $school_id]);
+            $terms_list = $stmt_terms->fetchAll(PDO::FETCH_ASSOC);
+
+            if (!empty($classes_list) && !empty($terms_list)) {
+                $stmt_batch_check = $pdo->prepare(
+                    "SELECT id FROM report_batch_settings
+                     WHERE school_id = :school_id
+                       AND academic_year_id = :academic_year_id
+                       AND class_id = :class_id
+                       AND term_id = :term_id
+                     LIMIT 1"
+                );
+                if (!$stmt_batch_check) {
+                    throw new Exception("Failed to prepare statement for batch check.");
+                }
+
+                $stmt_summary_check = $pdo->prepare(
+                    "SELECT COUNT(id) FROM student_report_summary WHERE report_batch_id = :report_batch_id LIMIT 1"
+                );
+                if (!$stmt_summary_check) {
+                    throw new Exception("Failed to prepare statement for summary check.");
+                }
+
+                foreach ($classes_list as $class_item) {
+                    $class_id = $class_item['id'];
+                    $class_name = $class_item['class_name'];
+                    $dashboard_progress_data[$class_name] = [];
+
+                    foreach ($terms_list as $term_item) {
+                        $term_id = $term_item['id'];
+                        $term_name_key = $term_item['term_name'];
+
+                        $stmt_batch_check->execute([
+                            ':school_id' => $school_id,
+                            ':academic_year_id' => $current_academic_year_id,
+                            ':class_id' => $class_id,
+                            ':term_id' => $term_id
+                        ]);
+                        $report_batch_id = $stmt_batch_check->fetchColumn();
+                        $status = "Pending";
+
+                        if ($report_batch_id) {
+                            $stmt_summary_check->execute([':report_batch_id' => $report_batch_id]);
+                            $summary_count = $stmt_summary_check->fetchColumn();
+                            if ($summary_count !== false && $summary_count > 0) {
+                                $status = "Completed";
+                            } else {
+                                $status = "Data Imported";
+                            }
+                        }
+                        $dashboard_progress_data[$class_name][$term_name_key] = [
+                            'status' => $status,
+                            'report_batch_id' => $report_batch_id
+                        ];
+                    }
+                }
+            } else {
+                 $_SESSION['info_message'] = "Dashboard Progress: No classes or terms found for your school. Please configure them in settings.";
+            }
+        } else {
+            $_SESSION['info_message'] = "Dashboard Progress: No active academic year found for your school for " . htmlspecialchars(date('Y')) . ". Please set an active academic year in settings. Progress display may be incomplete.";
         }
-    }
-} catch (PDOException $e) {
-    error_log("Dashboard Progress Data Fetching Error: " . $e->getMessage());
-    if (isset($_SESSION['user_id'])) {
+    } catch (PDOException $e) {
+        error_log("Dashboard Progress Data Fetching Error (PDO): " . $e->getMessage());
         $_SESSION['error_message'] = "Could not load dashboard progress data due to a database error.";
+    } catch (Exception $e) {
+        error_log("Dashboard Progress Data Fetching Error: " . $e->getMessage());
+        $_SESSION['error_message'] = "An error occurred while fetching dashboard data: " . $e->getMessage();
     }
-    // $dashboard_progress_data will remain empty or partially filled.
+} else if (isset($_SESSION['user_id']) && $_SESSION['role'] !== 'superadmin') {
+    // Logged in user is not a superadmin and has no school_id associated
+    $_SESSION['error_message'] = "Your user account is not associated with a school. Please contact support.";
 }
 // --- End Dashboard Progress Data Fetching ---
 ?>
@@ -102,13 +145,14 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Report System Dashboard - Maria Ow'embabazi P/S</title>
+    <title>Dashboard - <?php echo isset($_SESSION['school_name']) ? htmlspecialchars($_SESSION['school_name']) : 'Arturomania Systems'; ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet"> <!-- Font Awesome for icons -->
-    <link rel="icon" type="image/png" href="images/logo.png">
+    <!-- School-specific favicon can be implemented later if desired -->
+    <link rel="icon" type="image/png" href="<?php echo isset($_SESSION['school_logo_path']) && !empty($_SESSION['school_logo_path']) ? htmlspecialchars($_SESSION['school_logo_path']) : 'aslogo.png'; ?>">
     <style>
         body {
-            background-color: #e0f7fa; /* Sky blue theme - light cyan */
+            background-color: #f4f7f6; /* A more neutral background */
             display: flex;
             min-height: 100vh;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -232,13 +276,18 @@ try {
     <!-- Sidebar -->
     <nav id="sidebar">
         <div class="sidebar-header">
-            <img src="images/logo.png" alt="School Logo" onerror="this.style.display='none';">
-            <h5>Maria Ow'embabazi P/S</h5>
+            <!-- Placeholder for school logo -->
+            <img src="<?php echo isset($_SESSION['school_logo_path']) ? htmlspecialchars($_SESSION['school_logo_path']) : 'images/default_logo.png'; ?>"
+                 alt="<?php echo isset($_SESSION['school_name']) ? htmlspecialchars($_SESSION['school_name']) : 'School'; ?> Logo"
+                 onerror="this.src='images/default_logo.png'; this.alt='Default School Logo';"
+                 style="width: 80px; height: 80px; border-radius: 50%; margin-bottom: 10px; border: 2px solid #fff;">
+            <h5><?php echo isset($_SESSION['school_name']) ? htmlspecialchars($_SESSION['school_name']) : '[School Name]'; ?></h5>
             <p class="datetime-display"><?php echo date("D, d M Y H:i"); ?></p>
         </div>
 
         <ul class="list-unstyled components">
-            <p>Main Navigation</p>
+            <!-- This "Main Navigation" title could be dynamic too if needed -->
+            <p><?php echo isset($_SESSION['school_name']) ? htmlspecialchars($_SESSION['school_name']) : 'School'; ?> Menu</p>
             <li class="active"> <!-- Example: make dashboard link active by default -->
                 <a href="index.php"><i class="fas fa-tachometer-alt"></i> Dashboard Home</a>
             </li>
@@ -276,6 +325,11 @@ try {
             <li>
                 <a href="about.php"><i class="fas fa-book-reader"></i> User Manual</a> <!-- Changed icon and text -->
             </li>
+            <?php if (isset($_SESSION['role']) && ($_SESSION['role'] === 'school_admin' || $_SESSION['role'] === 'superadmin')): ?>
+            <li>
+                <a href="manage_grading.php"><i class="fas fa-balance-scale-right"></i> Grading Policies</a>
+            </li>
+            <?php endif; ?>
             <!--
             <li>
                 <a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a>
@@ -322,12 +376,18 @@ try {
                         </div>
                     <?php endif; ?>
 
-                    <?php if (isset($_SESSION['username'])): ?>
+                    <?php if (isset($_SESSION['user_id'])): // Check if user is logged in ?>
                         <div class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle text-dark" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-user-circle me-1 fa-lg"></i> <?php echo htmlspecialchars($_SESSION['username']); ?>
+                                <i class="fas fa-user-circle me-1 fa-lg"></i>
+                                <?php
+                                    // Display full_name if available, otherwise email
+                                    echo htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['email'] ?? 'User');
+                                ?>
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                                <!-- Link to a profile page if you create one -->
+                                <!-- <li><a class="dropdown-item" href="profile.php"><i class="fas fa-user-cog me-2"></i>My Profile</a></li> -->
                                 <li><a class="dropdown-item" href="profile.php"><i class="fas fa-address-card me-2"></i>About User</a></li>
                                 <li><a class="dropdown-item" href="#"><i class="fas fa-cog me-2"></i>Others (Placeholder)</a></li>
                                 <li><hr class="dropdown-divider"></li>
@@ -343,10 +403,11 @@ try {
         </nav>
 
         <div class="container-fluid pt-3 text-center"> <!-- Centering container for h2 and card -->
-            <h2 class="mb-3">Dashboard</h2> <!-- Added margin-bottom to h2 -->
+            <h2 class="mb-3"><?php echo isset($_SESSION['school_name']) ? htmlspecialchars($_SESSION['school_name']) : 'School'; ?> Dashboard</h2> <!-- Added margin-bottom to h2 -->
             <div class="main-content-card d-inline-block" style="max-width: 800px; width: 100%;"> <!-- d-inline-block and max-width for centering block elements -->
-                <p style="text-align: justify;">Welcome to the Maria Ow'embabazi Primary School Report Card System Dashboard. Use the sidebar to navigate through the available options. You can generate new reports, view summaries, or download templates.</p>
+                <p style="text-align: justify;">Welcome to the <?php echo isset($_SESSION['school_name']) ? htmlspecialchars($_SESSION['school_name']) : 'School'; ?> Report Card System Dashboard. Use the sidebar to navigate through the available options. You can generate new reports, view summaries, or download templates.</p>
                 <!-- More dashboard widgets/summaries can go here later -->
+                <!-- Note: Data fetching logic above this (lines 20-85) needs to be updated with school_id from session -->
             </div>
 
             <?php if (!empty($dashboard_progress_data) && !empty($classes_list) && !empty($terms_list) && $current_academic_year_id): ?>
@@ -426,7 +487,9 @@ try {
         </div>
          <footer class="mt-auto py-3 bg-light text-center">
             <div class="container">
-                <span class="text-muted">&copy; 2025 Maria Ow'embabazi Primary School - Good Christian, Good Citizen</span>
+                <span class="text-muted">&copy; <?php echo date("Y"); ?> <?php echo isset($_SESSION['school_name']) ? htmlspecialchars($_SESSION['school_name']) : 'Arturomania Systems'; ?>.
+                    <?php echo isset($_SESSION['school_motto']) ? htmlspecialchars($_SESSION['school_motto']) : 'Empowering Education.'; ?>
+                </span>
             </div>
         </footer>
     </div>
